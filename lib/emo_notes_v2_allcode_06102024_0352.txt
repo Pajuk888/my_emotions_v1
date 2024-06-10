@@ -1,0 +1,650 @@
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\main.dart
+===============================================
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:my_emotions_v1/providers/emotion_provider.dart';
+import 'package:my_emotions_v1/screens/home_screen.dart';
+
+void main() {
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => EmotionProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'My Emotions',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: HomeScreen(),
+    );
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\models\emotion.dart
+===============================================
+class Emotion {
+  final DateTime date;
+  final String emotion;
+  final int rating;
+  final String description;
+  final List<String> tags;
+  final String comments;
+
+  Emotion({
+    required this.date,
+    required this.emotion,
+    required this.rating,
+    required this.description,
+    required this.tags,
+    required this.comments,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'date': date.toIso8601String(),
+      'emotion': emotion,
+      'rating': rating,
+      'description': description,
+      'tags': tags,
+      'comments': comments,
+    };
+  }
+
+  static Emotion fromJson(Map<String, dynamic> json) {
+    return Emotion(
+      date: DateTime.parse(json['date']),
+      emotion: json['emotion'],
+      rating: json['rating'],
+      description: json['description'],
+      tags: List<String>.from(json['tags']),
+      comments: json['comments'],
+    );
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\models\emotion_entry.dart
+===============================================
+class EmotionEntry {
+  final DateTime date;
+  final int rating;
+  final String description;
+  final String tags;
+  final String comments;
+
+  EmotionEntry({
+    required this.date,
+    required this.rating,
+    required this.description,
+    required this.tags,
+    required this.comments,
+  });
+
+  factory EmotionEntry.fromJson(Map<String, dynamic> json) {
+    return EmotionEntry(
+      date: DateTime.parse(json['date'] as String),
+      rating: json['rating'] as int,
+      description: json['description'] as String,
+      tags: json['tags'] as String,
+      comments: json['comments'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'date': date.toIso8601String(),
+      'rating': rating,
+      'description': description,
+      'tags': tags,
+      'comments': comments,
+    };
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\providers\emotion_provider.dart
+===============================================
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:my_emotions_v1/models/emotion_entry.dart';
+
+class EmotionProvider with ChangeNotifier {
+  List<EmotionEntry> _entries = [];
+
+  List<EmotionEntry> get entries => _entries;
+
+  void addEmotion(EmotionEntry entry) {
+    _entries.add(entry);
+    saveEntries();
+    notifyListeners();
+  }
+
+  void updateEmotion(int index, EmotionEntry updatedEntry) {
+    _entries[index] = updatedEntry;
+    saveEntries();
+    notifyListeners();
+  }
+
+  void deleteEmotion(int index) {
+    _entries.removeAt(index);
+    saveEntries();
+    notifyListeners();
+  }
+
+  Future<void> loadEntries() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? entriesJson = prefs.getString('entries');
+    if (entriesJson != null) {
+      try {
+        List<dynamic> jsonData = jsonDecode(entriesJson);
+        _entries = jsonData
+            .map((item) => EmotionEntry.fromJson(item as Map<String, dynamic>))
+            .toList();
+      } catch (e) {
+        print('Error loading entries: $e');
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> saveEntries() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String entriesJson =
+        jsonEncode(_entries.map((entry) => entry.toJson()).toList());
+    await prefs.setString('entries', entriesJson);
+  }
+
+  List<EmotionEntry> getEntriesByDate(DateTime date) {
+    return _entries.where((entry) => isSameDay(entry.date, date)).toList();
+  }
+
+  int getEntryCountByDate(DateTime date) {
+    return getEntriesByDate(date).length;
+  }
+
+  double getAverageRatingByDate(DateTime date) {
+    final dateEntries = getEntriesByDate(date);
+    if (dateEntries.isEmpty) return 0.0;
+    final totalRating =
+        dateEntries.fold(0.0, (sum, entry) => sum + entry.rating);
+    return totalRating / dateEntries.length;
+  }
+
+  double getWeeklyAverageRating(DateTime startOfWeek) {
+    final weekEntries = _entries
+        .where((entry) =>
+            entry.date.isAfter(startOfWeek.subtract(Duration(days: 1))) &&
+            entry.date.isBefore(startOfWeek.add(Duration(days: 7))))
+        .toList();
+    if (weekEntries.isEmpty) return 0.0;
+    final totalRating =
+        weekEntries.fold(0.0, (sum, entry) => sum + entry.rating);
+    return totalRating / weekEntries.length;
+  }
+
+  bool isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\screens\day_screen.dart
+===============================================
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:my_emotions_v1/models/emotion_entry.dart';
+import 'package:my_emotions_v1/providers/emotion_provider.dart';
+import 'package:my_emotions_v1/widgets/emotion_card.dart';
+import 'package:my_emotions_v1/widgets/emotion_dialog.dart';
+
+class DayScreen extends StatefulWidget {
+  final DateTime date;
+
+  DayScreen({Key? key, required this.date}) : super(key: key);
+
+  @override
+  _DayScreenState createState() => _DayScreenState();
+}
+
+class _DayScreenState extends State<DayScreen> {
+  late DateTime _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = widget.date;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<EmotionProvider>(context, listen: false).loadEntries();
+    });
+  }
+
+  void _selectDate(DateTime date) {
+    setState(() {
+      _selectedDate = date;
+    });
+  }
+
+  void _navigateToPreviousDay() {
+    _selectDate(_selectedDate.subtract(Duration(days: 1)));
+  }
+
+  void _navigateToNextDay() {
+    _selectDate(_selectedDate.add(Duration(days: 1)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            IconButton(
+              icon: Icon(Icons.arrow_left),
+              onPressed: _navigateToPreviousDay,
+            ),
+            Text(DateFormat('EEE d MMM').format(_selectedDate)),
+            IconButton(
+              icon: Icon(Icons.arrow_right),
+              onPressed: _navigateToNextDay,
+            ),
+          ],
+        ),
+      ),
+      body: Consumer<EmotionProvider>(
+        builder: (context, provider, child) {
+          final entries = provider.getEntriesByDate(_selectedDate);
+          return ListView.builder(
+            itemCount: entries.length,
+            itemBuilder: (context, index) {
+              final entry = entries[index];
+              return EmotionCard(
+                entry: entry,
+                onDelete: () {
+                  provider.deleteEmotion(index);
+                },
+                onEdit: (updatedEntry) {
+                  provider.updateEmotion(index, updatedEntry);
+                },
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _openEmotionDialog(context),
+        child: Icon(Icons.add),
+      ),
+    );
+  }
+
+  void _openEmotionDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return EmotionDialog(
+          onSave: (newEntry) {
+            Provider.of<EmotionProvider>(context, listen: false)
+                .addEmotion(newEntry);
+          },
+          date: _selectedDate,
+        );
+      },
+    );
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\screens\home_screen.dart
+===============================================
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:my_emotions_v1/providers/emotion_provider.dart';
+import 'package:my_emotions_v1/screens/day_screen.dart';
+import 'package:my_emotions_v1/screens/week_screen.dart';
+
+class HomeScreen extends StatefulWidget {
+  @override
+  _HomeScreenState createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late PageController _pageController;
+  int _currentPageIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentPageIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: _onPageChanged,
+        children: [
+          DayScreen(date: DateTime.now()),
+          WeekScreen(
+              startOfWeek: DateTime.now()
+                  .subtract(Duration(days: DateTime.now().weekday - 1))),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentPageIndex,
+        onTap: (index) {
+          _pageController.jumpToPage(index);
+        },
+        items: [
+          BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_today), label: 'Day'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_view_week), label: 'Week'),
+        ],
+      ),
+    );
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\screens\month_screen.dart
+===============================================
+import 'package:flutter/material.dart';
+
+class MonthScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Month Screen'),
+      ),
+      body: Center(
+        child: Text('Monthly emotions overview goes here.'),
+      ),
+    );
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\screens\week_screen.dart
+===============================================
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:my_emotions_v1/providers/emotion_provider.dart';
+
+class WeekScreen extends StatelessWidget {
+  final DateTime startOfWeek;
+
+  WeekScreen({Key? key, required this.startOfWeek}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Week View'),
+      ),
+      body: Consumer<EmotionProvider>(
+        builder: (context, provider, child) {
+          return GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2),
+            itemCount: 8,
+            itemBuilder: (context, index) {
+              if (index < 7) {
+                final day = startOfWeek.add(Duration(days: index));
+                final entries = provider.getEntriesByDate(day);
+                final averageRating = provider.getAverageRatingByDate(day);
+
+                return Card(
+                  child: Column(
+                    children: [
+                      Text(DateFormat('EEE d').format(day)),
+                      Text('Entries: ${entries.length}'),
+                      Text('Avg Rating: ${averageRating.toStringAsFixed(1)}'),
+                    ],
+                  ),
+                );
+              } else {
+                final weeklyAverage =
+                    provider.getWeeklyAverageRating(startOfWeek);
+                return Card(
+                  child: Center(
+                    child:
+                        Text('Weekly Avg: ${weeklyAverage.toStringAsFixed(1)}'),
+                  ),
+                );
+              }
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\services\calculation_service.dart
+===============================================
+import 'package:my_emotions_v1/models/emotion_entry.dart';
+
+class CalculationService {
+  int calculateNumberOfEntries(List<EmotionEntry> entries) {
+    return entries.length;
+  }
+
+  double calculateAverageRating(List<EmotionEntry> entries) {
+    if (entries.isEmpty) return 0.0;
+    double total = entries.fold(0.0, (sum, entry) => sum + entry.rating);
+    return total / entries.length;
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\utils\constants.dart
+===============================================
+const String appName = "My Emotions";
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\widgets\emotion_card.dart
+===============================================
+import 'package:flutter/material.dart';
+import 'package:my_emotions_v1/models/emotion_entry.dart';
+import 'package:my_emotions_v1/widgets/emotion_dialog.dart';
+
+class EmotionCard extends StatelessWidget {
+  final EmotionEntry entry;
+  final VoidCallback onDelete;
+  final ValueChanged<EmotionEntry> onEdit;
+
+  const EmotionCard(
+      {required this.entry,
+      required this.onDelete,
+      required this.onEdit,
+      Key? key})
+      : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        title: Text(entry.description ?? ''),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Rating: ${entry.rating}'),
+            Text('Tags: ${entry.tags.join(', ')}'), // join method on a list
+            Text('Comments: ${entry.comments ?? ''}'),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () => _editEntry(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: onDelete,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _editEntry(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return EmotionDialog(
+          onSave: (updatedEntry) => onEdit(updatedEntry),
+          entry: entry,
+          date: entry.date,
+        );
+      },
+    );
+  }
+}
+
+
+===============================================
+C:\Learning and Developments\Learning Flutter\Apps\my_emotions_v1\lib\widgets\emotion_dialog.dart
+===============================================
+import 'package:flutter/material.dart';
+import 'package:my_emotions_v1/models/emotion_entry.dart';
+
+class EmotionDialog extends StatefulWidget {
+  final EmotionEntry? entry;
+  final ValueChanged<EmotionEntry> onSave;
+  final DateTime date;
+
+  const EmotionDialog(
+      {Key? key, this.entry, required this.onSave, required this.date})
+      : super(key: key);
+
+  @override
+  _EmotionDialogState createState() => _EmotionDialogState();
+}
+
+class _EmotionDialogState extends State<EmotionDialog> {
+  late TextEditingController _descriptionController;
+  late TextEditingController _tagsController;
+  late TextEditingController _commentsController;
+  late double _rating;
+
+  @override
+  void initState() {
+    super.initState();
+    _descriptionController =
+        TextEditingController(text: widget.entry?.description);
+    _tagsController =
+        TextEditingController(text: widget.entry?.tags.join(', '));
+    _commentsController = TextEditingController(text: widget.entry?.comments);
+    _rating = widget.entry?.rating ?? 0.0;
+  }
+
+  @override
+  void dispose() {
+    _descriptionController.dispose();
+    _tagsController.dispose();
+    _commentsController.dispose();
+    super.dispose();
+  }
+
+  void _saveEntry() {
+    final newEntry = EmotionEntry(
+      description: _descriptionController.text,
+      rating: _rating.toInt(), // Ensure rating is of type int
+      tags: _tagsController.text.split(',').map((tag) => tag.trim()).toList(),
+      comments: _commentsController.text,
+      date: widget.date,
+    );
+    widget.onSave(newEntry);
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.entry == null ? 'New Emotion' : 'Edit Emotion'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _descriptionController,
+            decoration: const InputDecoration(labelText: 'Description'),
+          ),
+          TextField(
+            controller: _tagsController,
+            decoration:
+                const InputDecoration(labelText: 'Tags (comma separated)'),
+          ),
+          TextField(
+            controller: _commentsController,
+            decoration: const InputDecoration(labelText: 'Comments'),
+          ),
+          Slider(
+            value: _rating,
+            min: 0,
+            max: 10,
+            divisions: 10,
+            label: _rating.round().toString(),
+            onChanged: (value) {
+              setState(() {
+                _rating = value;
+              });
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _saveEntry,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
