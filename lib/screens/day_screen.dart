@@ -1,62 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../providers/emotion_provider.dart';
-import '../widgets/emotion_dialog.dart';
-import '../widgets/emotion_card.dart';
+import 'package:my_emotions_v1/providers/emotion_provider.dart';
+import 'package:my_emotions_v1/widgets/emotion_card.dart';
+import 'package:my_emotions_v1/widgets/emotion_dialog.dart';
 
-class DayScreen extends StatefulWidget {
-  const DayScreen({Key? key}) : super(key: key); // Use key in constructor
-
-  @override
-  _DayScreenState createState() => _DayScreenState();
-}
-
-class _DayScreenState extends State<DayScreen> {
-  @override
-  void initState() {
-    super.initState();
-    _checkAndShowDialog();
-  }
-
-  Future<void> _checkAndShowDialog() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isDialogShown = prefs.getBool('isDialogShown') ?? false;
-
-    if (!isDialogShown) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showEmotionDialog();
-      });
-      await prefs.setBool('isDialogShown', true);
-    }
-  }
-
-  void _showEmotionDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => EmotionDialog(),
-    );
-  }
-
+class DayScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final emotionProvider = Provider.of<EmotionProvider>(context);
-    final entries = emotionProvider.entries;
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Daily Emotions'), // Use const
+        title: Text('Daily Emotions'),
+        actions: [
+          Container(
+            margin: EdgeInsets.all(8),
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.blue,
+            ),
+            child: Center(
+              child: Text(
+                emotionProvider.entryCount.toString(),
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+          Container(
+            margin: EdgeInsets.all(8),
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.green,
+            ),
+            child: Center(
+              child: Text(
+                emotionProvider.averageRating.toStringAsFixed(1),
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        ],
       ),
       body: ListView.builder(
-        itemCount: entries.length,
-        itemBuilder: (ctx, i) => EmotionCard(
-          emotion: entries[i], // Provide required emotion argument
-          index: i, // Provide required index argument
-        ),
+        itemCount: emotionProvider.emotions.length,
+        itemBuilder: (context, index) {
+          final emotion = emotionProvider.emotions[index];
+          return EmotionCard(
+            emotion: emotion,
+            index: index,
+            onDelete: () {
+              emotionProvider.deleteEmotion(index);
+            },
+            onEdit: () {
+              showDialog(
+                context: context,
+                builder: (context) => EmotionDialog(
+                  emotion: emotion,
+                  index: index,
+                ),
+              );
+            },
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showEmotionDialog,
-        child: const Icon(Icons.add), // Use const
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (context) => EmotionDialog(),
+          );
+        },
+        child: Icon(Icons.add),
       ),
     );
   }
